@@ -1,0 +1,96 @@
+// parameters for managing segmentation of sections
+seg_per_char_l = 10		// segments per characteristic length
+lambdaf = 100           // maximum frequency to consider for lambda
+d_lambda = .1           // make 1/d_lamba segments for each lambda, not exactly, but slt
+
+celsius = 35
+
+// hh3 na
+soma_gna = .25
+axon_gna = 1            // changed from 5 to 1, to make dendrites less potent, now get appropriate ~20mV somatic depolarization from proximal dendritic nmda spks w/o spking soma/axon
+dend_gna = .006
+dend_gna_slope = -dend_gna/200  // taper to 0 conductance at 200um
+
+taum_gna = .05
+tauh_gna = .5
+tausb_gna = .1
+taus_gna = 20
+tausvh_gna = 10
+tausvs_gna = 5
+powm_gna = 2
+powh_gna = 1
+pows_gna = 1
+objref hhna_suffix
+hhna_suffix = new String("hh3na")
+
+// hh3 k
+soma_gk = 0.03
+axon_gk = .05
+dend_gk = 0.002
+dend_gk = 0.0003
+dend_gk_slope = 0
+
+dend_cond_scal = 1
+dend_gk /= dend_cond_scal
+dend_gna /= dend_cond_scal
+dend_gna_slope /= dend_cond_scal
+
+taun_gk = 1
+pown_gk = 1  //has to be 1 for 'stability'
+
+objref hhk_suffix
+hhk_suffix = new String("hh3k")
+
+// passive
+dendritic_Cm  = 2
+somatic_Cm  = 1
+myelin_Cm = 0.05
+global_Rm = 20000
+dendritic_Rm = global_Rm/2
+node_Rm = 50
+global_Ra = 100
+objref pas_suffix
+pas_suffix = new String("fastpas")
+
+// reversals
+global_epas = -70
+global_ena = 60
+global_ek = -90
+
+// spine params
+spnspc = .5 // isi(interspineinterval)=0.5um, i.e., density (2 spines/um)
+spine_head_L = 0.5
+spine_head_diam = 0.5
+spine_neck_L = 1.5
+spine_neck_diam = 0.25
+
+// run params
+dt = .1
+fixed_step_dt = dt
+steps_per_ms = 10
+screen_update_invl = 0.1
+tstop = 500
+tsamp = tstop/dt+1
+v_init = -70
+
+// possion firing properties
+ex_stim_freq = 50	// 50 Hz
+meanisi = 1000/ex_stim_freq //in ms/spk  1000ms/sec / spk/sec 
+//poisson seed offset
+luckyoffset = 42
+
+// synapses
+maxsyn1 = 40   
+maxsyn2 = 40   
+
+// ampa channel speed
+dsyntau1 = 0.5
+dsyntau2 = .05
+
+// nmda channel speed, fit to 35C nmda model
+nmdadsyntau1 = 18.8
+nmdadsyntau2 = 2.1
+
+// synapse conductances
+snv_nmda_gmax = 3
+snv_ampa_gmax = 1.5

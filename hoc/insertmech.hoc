@@ -1,0 +1,37 @@
+proc insertmech() {local val, valslope, gmax0, gmax1, zeropt localobj instr, inbarstr, inmechstr
+    inmechstr = new String()
+	{instr = new String($s1)      val = $2 }
+	if (numarg()>2) { //special gbar string is specified, this should never happen if we've 'corrected' the mod files
+		inbarstr = new String($s3)
+	}else{
+		inbarstr = new String("gbar")
+	}
+    // insert if it's not there
+    if (!ismembrane(instr.s)) {sprint(inmechstr.s, "%s insert %s", secname(), instr.s)  execute(inmechstr.s)}
+
+    // simple constant conductance/parameter specified  %40.30f float format is that way for no good reason, hopefully overkill
+    if (numarg()<4) {sprint(inmechstr.s, "%s %s_%s = %40.30f", secname(), inbarstr.s, instr.s, val)     execute(inmechstr.s)}
+
+    if (numarg()>3) { // conductance/property range information is given instead of a single constant
+                      // so far implement linear gradient, could accommodate by introducing a flags/switch
+        valslope = $4
+        gmax0 = val+valslope*distance(0)
+        gmax1 = val+valslope*distance(1)
+
+        // not yet decayed to zero, simple insert case
+        if (gmax0>0) if (gmax1>0) {sprint(inmechstr.s, "%s %s_%s(0:1) = %40.30f:%40.30f", secname(), inbarstr.s, instr.s, gmax0, gmax1)   execute(inmechstr.s)}
+
+        // decays to zero prematurely
+        if (gmax0>0) if (gmax1<0) {
+            zeropt = abs((gmax0/valslope)/L)
+            {sprint(inmechstr.s, "%s %s_%s(0:%40.30f) = %40.30f:0", secname(), inbarstr.s, instr.s, zeropt, gmax0)   execute(inmechstr.s)}
+            {sprint(inmechstr.s, "%s %s_%s(%40.30f:1) = 0:0", secname(), inbarstr.s, instr.s, zeropt)   execute(inmechstr.s)}
+        }
+
+        //uninsert if gbar has already decayed to zero
+        if (gmax0<=0) if (gmax1<=0) if (ismembrane(instr.s)) {sprint(inmechstr.s, "%s uninsert %s",secname(),instr.s)   execute(inmechstr.s)}
+
+    }
+    // uninsert if conductance is zero
+    if (numarg()<4) if (val==0) if (strcmp("gbar",inbarstr.s)==0) if (ismembrane(instr.s)) {sprint(inmechstr.s, "%s uninsert %s",secname(),instr.s)   execute(inmechstr.s)}
+}

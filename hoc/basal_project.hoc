@@ -1,0 +1,322 @@
+//where am I?
+//{system("pwd")}
+
+// debug flags, debugging NEURON is fun!
+verb = 0
+runverb = 0
+snv_verbose = 0
+spinevrb = 0
+ncverb = 0
+ssverb = 0
+
+// program flags
+activepreinit = 1   // put in all those fancy ion channels?
+ssinitenabled = 1   // run the steady-state init stuff?
+fakerun = 0         // don't really do a run, end run immediately, used to read out spike rasters if needed later
+spinesfl = 0        // spines in use?
+poisson=1           // poisson stimulus train or some other predetermined spike train
+
+// load dependencies
+{load_file("stdgui.hoc")}
+{load_file("global.hoc")}               // misc functions
+{load_file("ssinit.hoc")}               // steady-state init and 'run' control
+{load_file("insertmech.hoc")}           // used by preinit() function to plug in instrinsic membrane properties
+{load_file("synsuper.hoc")}             // used by preinit() function to plug in synapses
+{load_file("netconsynstimbundle.hoc")}  // used by preinit() function to deliver presynaptic netcon events
+{load_file("basal_project_params.hoc")} // parameters
+
+//synapse placeholder list
+objref synphlist
+synphlist = new List("synph")
+//super synapse list
+objref ssynlist
+ssynlist = new List("synsuper")
+
+// load morphology
+{load_file("morpho/newj4line.hoc")}    // smoothed j4
+{load_file("morpho/j4-sets.hoc")}      // all those j4 lists
+{load_file("morpho/j4_axon.hoc")}      // give j4 an axon
+soma_con_pt = 1 
+access soma
+soma distance(0,soma_con_pt)
+
+proc refreshnseg() {local nsegnew localobj active_seclist, pasactive_seclist
+    pasactive_seclist = new SectionList()
+    active_seclist = $o1
+    forsec myelin_list active_seclist.append()
+    forsec soma_list active_seclist.append()
+    forsec axon_list active_seclist.append()
+    forsec active_seclist {
+        nsegnew = int(L/seg_per_char_l/2)*2+1       //at least 1 segment every seg_per_char_l (10) um 
+        if (nsegnew>nseg) nseg = nsegnew            //only increase nseg
+        nsegnew = int((L/(d_lambda*lambda_f(lambdaf))+(1-d_lambda))/2)*2+1  //dlambda rule recommended by Hines/Carnevale
+        if (nsegnew>nseg) nseg = nsegnew            
+        nsegnew = 3                                 //make nseg at least 3, to please prerun() histogram function
+        if (nsegnew>nseg) nseg = nsegnew            
+    }
+    forall pasactive_seclist.append()
+    pasactive_seclist.remove(active_seclist)
+    forsec pasactive_seclist nseg=1                 // make the nonactive (not directly excited subtree[s]) sections have fewer segments
+    soma distance(0,soma_con_pt)
+}
+
+objref r, rin
+obfunc newstimvec() {localobj indvec, r, syn
+    r = $o1
+	indvec = new Vector(tsamp) 
+    indvec.setrand(r).integral().where("<=",tstop)
+    if (numarg()>1) {
+        syn = $o2
+        if (syn.e1flag) indvec.where(">=",syn.e1del)
+        if (syn.e2flag) indvec.where("<=",syn.e2del)
+    }
+    return indvec
+}
+
+objref ex_stim_vecs, snv_synList, fihs
+ex_stim_vecs = new List()
+snv_synList = new List()
+fihs = new List()
+proc place_glu_freq() {\
+    local loc, synidx, ampagmax, nmdagmax, pulse1, pulse2, mechloc, nsyn\
+    localobj ex_stim_vec, snv_newSyn, tmp_stim_vec, syn, rand, execcmd, nil, ncssb, theseedvec
+    execcmd = new String()
+    synidx = $1
+    loc = $2
+    ampagmax = $3
+    nmdagmax = $4
+    rand = $o5.rand
+    syn = $o5.syn
+    nsyn = $6
+    mechloc = loc // if channels directly on dendrite
+    if (spinesfl) mechloc = 1.0 // if we have spines
+    pulse1=2
+    pulse2=22
+    if (poisson) {
+            ex_stim_vec = newstimvec(rand,syn)
+            for i=2,nsyn {
+                tmp_stim_vec = newstimvec(rand,syn)
+                ex_stim_vec.append(tmp_stim_vec)
+            }
+            ex_stim_vecs.append(ex_stim_vec)
+    } else {
+        ex_stim_vec = new Vector()
+        if (syn.e1flag) ex_stim_vec.append(syn.e1del)
+        if (syn.e2flag) ex_stim_vec.append(syn.e2del)
+        ex_stim_vecs.append(ex_stim_vec)
+        if (snv_verbose) ex_stim_vec.printf
+        ampagmax *= nsyn 
+        nmdagmax *= nsyn
+    }
+
+    if (spinesfl) {
+        if (spinevrb) print "creating spine"
+        {sprint(execcmd.s, "create spinehead%d, spineneck%d", synidx, synidx)                                  execute(execcmd.s)}
+        {sprint(execcmd.s, "spineneck%d connect spinehead%d(0), 1", synidx, synidx)                            execute(execcmd.s)}
+        {sprint(execcmd.s, "connect spineneck%d(0), %g", synidx, loc)                                          execute(execcmd.s)}    
+        {sprint(execcmd.s, "push_section(\"spineneck%d\")", synidx)                                            execute(execcmd.s)}
+        spine_list.append()
+        {Ra = global_Ra L = spine_neck_L diam = spine_neck_diam}
+        pop_section()
+        {sprint(execcmd.s, "push_section(\"spinehead%d\")", synidx)                                            execute(execcmd.s)}
+        spine_list.append()
+        {Ra = global_Ra L = spine_head_L diam = spine_head_diam}
+        if (spinevrb) print "created spine"
+    }
+
+    // AMPA component
+    snv_newSyn = new dsyn(mechloc)
+    snv_newSyn.tau1 = dsyntau1
+    snv_newSyn.tau2 = dsyntau2
+    snv_newSyn.gmax = ampagmax
+    //netcon = new NetCon(source, target, threshold, delay, weight)
+    ncssb = new netconsynstimbundle(new NetCon(nil,snv_newSyn,1,fixed_step_dt*10,1),snv_newSyn,ex_stim_vec)
+    fihs.append(new FInitializeHandler(2,"doevents()",ncssb))
+    snv_synList.append(ncssb)
+
+    // NMDA component
+    snv_newSyn = new NMDA_dsyn(mechloc)
+    snv_newSyn.tau1 = nmdadsyntau1
+    snv_newSyn.tau2 = nmdadsyntau2
+    snv_newSyn.gmax = nmdagmax
+    snv_synList.append(snv_newSyn)
+    //netcon = new NetCon(source, target, threshold, delay, weight)
+    ncssb = new netconsynstimbundle(new NetCon(nil,snv_newSyn,1,fixed_step_dt*10,1),snv_newSyn,ex_stim_vec)
+    fihs.append(new FInitializeHandler(2,"doevents()",ncssb))
+    snv_synList.append(ncssb)
+
+    if (spinesfl) pop_section()
+    if (snv_verbose) print "syn ", synidx, " - Glu @ ", secname(), ": ", loc, "ampa GMAX=", ampagmax, ", nmda GMAX=", nmdagmax 
+}
+
+proc prerun() {local i, loc localobj sl2 
+    tsamp = tstop/dt+1
+	ex_stim_vecs.remove_all()
+    fihs.remove_all()
+    snv_synList.remove_all()
+    forsec spine_list delete_section()
+    spine_list.remove(spine_list)
+    
+    if (spinesfl) {
+        runsyn(0)
+    } else {
+        if (poisson) {
+            runsyn(0)
+        } else {
+            runsyn(1)
+        }
+    }
+}
+
+proc runsyn() {local nsyn, i, j, k, loc, tloc, maxspan, nsegrun\
+    localobj locs, locsnsyn, tlocv, nseglocs, sl2, syn, thelist
+    thelist = ssynlist
+    nsegrun = $1
+    if (runverb) print "nsegrun: ", nsegrun
+    k=0
+    if (runverb) print thelist.count()
+    for i= 0,thelist.count()-1 {
+        syn = thelist.o(i).syn
+        locs = new Vector()
+        loc = syn.get_loc()
+        //print i, syn.sloc, syn.nsyn, loc, secname()
+        if(-1!=syn.sloc) loc = (syn.sloc-distance(0))/L
+        nsyn = syn.nsyn
+        if (nsyn) {
+            if (nsyn==1) locs = new Vector(1,loc)
+            if (nsyn==2) {
+                maxspan = spnspc/L/2
+                locs.append(loc-maxspan,loc+maxspan)
+            }
+            if (nsyn>=3) {
+                maxspan = spnspc*((nsyn-1)/2)/L
+                locs.indgen(loc-maxspan,loc+maxspan,spnspc/L-float_epsilon)
+            }
+            if (runverb) print maxspan, loc, L " locs vector built"
+            if (runverb) locs.printf
+            locsnsyn = new Vector(locs.size(),1)
+            if (nsegrun) {
+                locsnsyn = locs.histogram(0,1,1/(nseg-float_epsilon))
+                locs = new Vector(locsnsyn.size())
+                locs.indgen().add(-1).mul(1/nseg).add(1/nseg/2)
+            }
+            if (runverb) locs.printf
+            if (runverb) locsnsyn.printf
+            if (runverb) print locsnsyn.sum, nsyn
+            for j=0,locs.size()-1{
+                if (locsnsyn.x[j]) {
+                    place_glu_freq(k,locs.x[j],snv_ampa_gmax*syn.noampablock,snv_ampa_gmax*syn.ratio*syn.nonmdablock,thelist.o(i),locsnsyn.x[j])
+                    k+=1
+                }
+            }
+        }
+        pop_section()
+    }
+}
+
+proc preinit() { 
+    //mostly passive stuff
+    forall {
+        insertmech(pas_suffix.s,global_epas,"e")
+        insertmech(pas_suffix.s,1/global_Rm,"g")
+        Ra = global_Ra
+        cm= somatic_Cm
+    }
+    // exceptions along the axon
+    forsec node_list {
+        insertmech(pas_suffix.s,1/node_Rm,"g")
+    }
+    forsec myelin_list {
+        cm = myelin_Cm
+    }
+    // spine 'correction'
+    forsec basal_leaves {
+        insertmech(pas_suffix.s,1/dendritic_Rm,"g")
+        cm= dendritic_Cm
+    }
+    //mostly active stuff
+    if (activepreinit) {
+        forall{
+            // no universals atm
+        }
+        forsec dendrite_list {
+            insertmech(hhk_suffix.s,taun_gk,"taun")
+            insertmech(hhna_suffix.s,taum_gna,"taum")
+            insertmech(hhna_suffix.s,tauh_gna,"tauh")
+            insertmech(hhna_suffix.s,tausb_gna,"tausb")
+            insertmech(hhna_suffix.s,taus_gna,"taus")
+            insertmech(hhna_suffix.s,tausvh_gna,"tausvh")
+            insertmech(hhna_suffix.s,tausvs_gna,"tausvs")
+            insertmech(hhk_suffix.s,pown_gk,"pown")
+            insertmech(hhna_suffix.s,powm_gna,"powm")
+            insertmech(hhna_suffix.s,powh_gna,"powh")
+            insertmech(hhna_suffix.s,pows_gna,"pows")
+            insertmech(hhna_suffix.s,dend_gna,"gbar",dend_gna_slope)
+            insertmech(hhk_suffix.s,dend_gk,"gbar",dend_gk_slope)
+        }
+        forsec spine_list {
+            // passive spines atm
+        }
+        forsec soma_list {
+            insertmech(hhk_suffix.s,taun_gk,"taun")
+            insertmech(hhna_suffix.s,taum_gna,"taum")
+            insertmech(hhna_suffix.s,tauh_gna,"tauh")
+            insertmech(hhna_suffix.s,tausb_gna,"tausb")
+            insertmech(hhna_suffix.s,taus_gna,"taus")
+            insertmech(hhna_suffix.s,tausvh_gna,"tausvh")
+            insertmech(hhna_suffix.s,tausvs_gna,"tausvs")
+            insertmech(hhk_suffix.s,pown_gk,"pown")
+            insertmech(hhna_suffix.s,powm_gna,"powm")
+            insertmech(hhna_suffix.s,powh_gna,"powh")
+            insertmech(hhna_suffix.s,pows_gna,"pows")
+            insertmech(hhna_suffix.s,soma_gna)
+            insertmech(hhk_suffix.s,soma_gk)
+        }
+        forsec node_list {
+            insertmech(hhk_suffix.s,taun_gk,"taun")
+            insertmech(hhna_suffix.s,taum_gna,"taum")
+            insertmech(hhna_suffix.s,tauh_gna,"tauh")
+            insertmech(hhna_suffix.s,tausb_gna,"tausb")
+            insertmech(hhna_suffix.s,taus_gna,"taus")
+            insertmech(hhna_suffix.s,tausvh_gna,"tausvh")
+            insertmech(hhna_suffix.s,tausvs_gna,"tausvs")
+            insertmech(hhk_suffix.s,pown_gk,"pown")
+            insertmech(hhna_suffix.s,powm_gna,"powm")
+            insertmech(hhna_suffix.s,powh_gna,"powh")
+            insertmech(hhna_suffix.s,pows_gna,"pows")
+            insertmech(hhna_suffix.s,axon_gna)
+            insertmech(hhk_suffix.s,axon_gk)
+        }
+        forsec myelin_list {
+            insertmech(hhna_suffix.s,taum_gna,"taum")
+            insertmech(hhna_suffix.s,tauh_gna,"tauh")
+            insertmech(hhna_suffix.s,tausb_gna,"tausb")
+            insertmech(hhna_suffix.s,taus_gna,"taus")
+            insertmech(hhna_suffix.s,tausvh_gna,"tausvh")
+            insertmech(hhna_suffix.s,tausvs_gna,"tausvs")
+            insertmech(hhna_suffix.s,powm_gna,"powm")
+            insertmech(hhna_suffix.s,powh_gna,"powh")
+            insertmech(hhna_suffix.s,pows_gna,"pows")
+            insertmech(hhna_suffix.s,dend_gna)
+        }
+        forsec axon_list { //axon_hillock and axon_is
+            insertmech(hhk_suffix.s,taun_gk,"taun")
+            insertmech(hhna_suffix.s,taum_gna,"taum")
+            insertmech(hhna_suffix.s,tauh_gna,"tauh")
+            insertmech(hhna_suffix.s,tausb_gna,"tausb")
+            insertmech(hhna_suffix.s,taus_gna,"taus")
+            insertmech(hhna_suffix.s,tausvh_gna,"tausvh")
+            insertmech(hhna_suffix.s,tausvs_gna,"tausvs")
+            insertmech(hhk_suffix.s,pown_gk,"pown")
+            insertmech(hhna_suffix.s,powm_gna,"powm")
+            insertmech(hhna_suffix.s,powh_gna,"powh")
+            insertmech(hhna_suffix.s,pows_gna,"pows")
+            insertmech(hhna_suffix.s,axon_gna)
+            insertmech(hhk_suffix.s,axon_gk)
+        }
+    }
+    forall { //set batteries
+        if(ismembrane("k_ion")) ek = global_ek
+        if(ismembrane("na_ion")) ena = global_ena
+    }
+}

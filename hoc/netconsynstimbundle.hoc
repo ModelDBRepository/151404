@@ -1,0 +1,23 @@
+begintemplate netconsynstimbundle
+public syn, stim, netcon, printname, doevents
+objref syn, stim, netcon, this
+external ncverb
+proc init() {local loc
+    netcon = $o1
+    syn = $o2
+    stim = $o3
+}
+
+proc doevents() {local i
+    if (ncverb) print "hello!"
+	for i=0,stim.size-1	{
+        if (ncverb) print "ncevent: ", stim.x[i], "ms"
+        netcon.event(stim.x[i])
+    }
+}
+
+proc printname() {
+    print "I am ", this
+}
+
+endtemplate netconsynstimbundle

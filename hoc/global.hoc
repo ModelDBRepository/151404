@@ -1,0 +1,26 @@
+func nsegcnt() {local nsegtot
+    nsegtot = 0
+    forall nsegtot+=nseg
+    return nsegtot
+}
+
+// create list of active subtrees based on input locations
+obfunc makeactivelist() {local done localobj sr, sname, sl, active_seclist
+	sl = new SectionList()
+	active_seclist = $o1
+	forsec active_seclist {
+		done = 0
+		sr = new SectionRef()
+		while(!done){
+			sr.parent sname = new String(secname())
+			if(abs(strcmp(sname.s,"soma"))){ //if not at soma keep going!
+				sr.parent sr = new SectionRef()
+			} else {
+				sr.sec sl.subtree()
+				done = 1
+			}
+		}
+	}
+	sl.unique()
+	return sl
+}

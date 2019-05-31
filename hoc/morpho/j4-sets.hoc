@@ -1,0 +1,106 @@
+objref apical_list, basal_list, dendrite_list, axon_list, myelin_list, node_list, soma_list, axonall_list
+apical_list = new SectionList()
+basal_list = new SectionList()
+dendrite_list = new SectionList()
+axon_list = new SectionList()
+myelin_list = new SectionList()
+node_list = new SectionList()
+soma_list = new SectionList()
+axonall_list = new SectionList()
+
+forsec "a1_" basal_list.append()
+forsec "a2_" basal_list.append()
+forsec "a3_" basal_list.append()
+forsec "a4_" basal_list.append()
+forsec "a5_" basal_list.append()
+forsec "a6_" basal_list.append()
+forsec "a7_" basal_list.append()
+forsec "a8_" basal_list.append()
+forsec "a9_" basal_list.append()
+forsec "a10_" basal_list.append()
+forsec basal_list dendrite_list.append()
+
+//commented out to try to speed up simulations
+forsec "a11_" apical_list.append()
+forsec apical_list dendrite_list.append()
+
+forsec "soma" soma_list.append()
+
+objref trunk_list
+trunk_list = new SectionList()
+
+//commented out to try to speed up simulations
+a11_1 trunk_list.append()
+a11_12 trunk_list.append()
+a11_122 trunk_list.append()
+a11_1222 trunk_list.append()
+a11_12222 trunk_list.append()
+a11_122222 trunk_list.append()
+a11_1222222 trunk_list.append()
+a11_12222222 trunk_list.append()
+a11_12222221 trunk_list.append()
+a11_122222211 trunk_list.append()
+a11_122222212 trunk_list.append()
+
+
+objref soma_prox_list, prox_dend_list
+soma_prox_list = new SectionList()
+
+a1_1 soma_prox_list.append()
+a2_1 soma_prox_list.append()
+a3_1 soma_prox_list.append()
+a4_1 soma_prox_list.append()
+a5_1 soma_prox_list.append()
+a6_1 soma_prox_list.append()
+a7_1 soma_prox_list.append()
+a8_1 soma_prox_list.append()
+a9_1 soma_prox_list.append()
+a10_1 soma_prox_list.append()
+// a11_1 is trunk; handle that separately.
+
+prox_dend_list = new SectionList()
+forsec soma_prox_list prox_dend_list.append()
+a11_11 prox_dend_list.append()
+a11_121 prox_dend_list.append()
+a11_1221 prox_dend_list.append()
+a11_12221 prox_dend_list.append()
+a11_122221 prox_dend_list.append()
+a11_1222221 prox_dend_list.append()
+a11_122222222 prox_dend_list.append()
+a11_122222221 prox_dend_list.append()
+a11_1222222112 prox_dend_list.append()
+a11_1222222111 prox_dend_list.append()
+a11_1222222122 prox_dend_list.append()
+a11_1222222121 prox_dend_list.append()
+
+objref trunkInhibList
+trunkInhibList = new SectionList()
+
+a11_1 trunkInhibList.append()
+a11_12 trunkInhibList.append()
+a11_122 trunkInhibList.append()
+a11_1222 trunkInhibList.append()
+a11_12222 trunkInhibList.append()
+a11_122222 trunkInhibList.append()
+
+
+objref input_list		// needed by passive.hoc
+input_list = new SectionList()
+forsec soma_list input_list.append()
+forsec trunkInhibList input_list.append()
+forsec basal_list input_list.append()
+
+objref spine_list
+spine_list = new SectionList()
+
+// leaf list
+objref lsec, leaf_list, basal_leaves
+leaf_list = new SectionList()
+forsec dendrite_list {
+    lsec = new SectionRef()
+    if (!lsec.nchild) leaf_list.append()
+}
+
+//basal leaves
+basal_leaves = new SectionList()
+forsec leaf_list ifsec basal_list basal_leaves.append()

@@ -1,0 +1,57 @@
+// Add an axon and connect it to the soma.
+// Axon geometry after Mainen et al., Neuron (1995)
+
+axon_nseg = 5
+
+create axon_myelin[axon_nseg],axon_node[axon_nseg]
+
+create axon_hillock
+axon_hillock {
+  L = 10
+  diam(0:1) = 4:1
+  axon_list.append()
+}
+
+// original .5 connection makes multisplit unhappy
+// soma connect axon_hillock(0), 0.5
+// tried at 0 end away from all other branches at 1 end
+// which must be connected to the 1 end
+soma connect axon_hillock(0), 0
+
+create axon_is
+axon_is {
+  diam = 1
+  L = 20
+  axon_list.append()
+}
+axon_hillock connect axon_is(0), 1.0
+
+create axon
+axon {
+  diam = 0.5
+  L = 1000
+}
+axon_is connect axon(0), 1.0
+
+for i=0,axon_nseg-1 {
+  axon_myelin[i] {    // myelin element
+    L = 100
+    diam = 1.5
+    myelin_list.append()
+  }
+  axon_node[i] {      // nodes of Ranvier
+    nseg = 1
+    L = 1.0
+    diam = 1.0        // nodes thinner than axon
+    node_list.append()
+  }
+}
+
+axon_is connect axon_myelin[0](0), 1
+axon_myelin[0] connect axon_node[0](0), 1
+for i=0,axon_nseg-2 {
+  axon_node[i] connect axon_myelin[i+1](0), 1
+  axon_myelin[i] connect axon_node[i+1](0), 1
+}
+
+forsec "axon" axonall_list.append()

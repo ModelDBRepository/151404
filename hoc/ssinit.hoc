@@ -1,0 +1,68 @@
+//hijack the std init/run functions to do a prerun prep, more complex init, and steady-state init
+//before actual numerical integration takes place
+//This must be loaded after stdlib.hoc nrngui.hoc stdrun.hoc, etc, in order to override
+//the functions they contain.
+
+proc preinit() {
+    // dummy function that can be overloaded by a specific function in the "main" hoc file
+}
+
+// init to steady state, based on NEURON book example: http://www.neuron.yale.edu/ftp/ted/book/chap8.pdf
+// also there: http://www.neuron.yale.edu/course/init.html
+proc ssinit() {local dtsav, temp
+    t = 0
+    finitialize(v_init)
+    if (ssinitenabled) {
+        t=-1e11
+        dtsav=dt
+        dt=2.5e9
+        // if cvode is on, turn it off to do large fixed step
+        temp = cvode.active()
+        if (ssverb) print "cvode: ", temp
+        if (temp!=0) { cvode.active(0) }
+        if (ssverb) print "cvode set to inactive ", cvode_active(), " ", cvode.active(), using_cvode_
+        while (t<-1e10){ fadvance()   //advance is a function in stdrun.hoc that simply calls fadvance
+                                    // fadvance is an internal neuron function to step forward in time,
+                                    // if needed advance can be overloaded
+        }
+        if (ssverb) print "finished ss-stepping"
+        if (temp!=0) { cvode.active(temp) }
+        if (ssverb) print "cvode set back to original state ", temp, " ", cvode_active(), " ", cvode.active(), using_cvode_
+        if (ssverb) print "t= ", t
+        dt = dtsav
+        t = 0
+        if (ssverb) print "set t=0, t= ", t
+        if (cvode_active()) {
+            cvode.re_init()
+        } else {
+            fcurrent()
+        }
+        if (ssverb) print "finish cvode.re_init/fcurrent t= ", t
+        frecord_init()
+        if (ssverb) print "finish frecord_init, exiting ssinit t= ", t
+    }
+}
+
+/* init()
+* Initialization procedure -- replaces init() in stdrun.hoc
+*/
+proc init () {
+    ssinit() //init to steady state
+}
+
+proc prerun() {
+    // dummy function that can be overloaded by a specific function in the "main" hoc file
+}
+
+/* run()
+* replaces run() in stdrun.hoc
+*/
+proc run() {
+    running_ = 1
+    prerun()
+    preinit()
+    stdinit()
+    if (ssverb) print "about to continuerun, t= ", t
+    if (!fakerun) continuerun(tstop)
+    if (ssverb) print "finished run, realtime: ", realtime, "\n"
+}

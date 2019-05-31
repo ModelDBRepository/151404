@@ -1,0 +1,17 @@
+begintemplate synsuper
+public syn, rand, setrand, printname 
+objref syn, rand, this
+proc init() {
+    syn = new synph($1)
+    rand = $o2
+}
+
+proc setrand() {
+    rand = $o1
+}
+
+proc printname() {
+    print "I am ", this
+}
+
+endtemplate synsuper
